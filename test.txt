@@ -1,0 +1,141 @@
+#include "pch.h"
+#include "CppUnitTest.h"
+#include "../YourProjectName/PktDef.h"
+
+using namespace Microsoft::VisualStudio::CppUnitTestFramework;
+
+namespace PktDefUnitTests
+{
+	TEST_CLASS(PktDefTests)
+	{
+	public:
+
+		TEST_METHOD(DefaultConstructor_InitializesCorrectly)
+		{
+			PktDef pkt;
+
+			Assert::AreEqual(pkt.GetPktCount(), 0);
+			Assert::AreEqual(pkt.GetLength(), 0);
+			Assert::IsFalse(pkt.GetAck());
+			Assert::AreEqual(pkt.GetCmd(), PktDef::RESPONSE); // Default cmd bits are 0
+		}
+
+		TEST_METHOD(SetAndGetPktCount)
+		{
+			PktDef pkt;
+			pkt.SetPktCount(42);
+			Assert::AreEqual(pkt.GetPktCount(), 42);
+		}
+
+		TEST_METHOD(SetCmd_Drive)
+		{
+			PktDef pkt;
+			pkt.SetCmd(PktDef::DRIVE);
+			Assert::AreEqual(pkt.GetCmd(), PktDef::DRIVE);
+		}
+
+		TEST_METHOD(SetCmd_Sleep)
+		{
+			PktDef pkt;
+			pkt.SetCmd(PktDef::SLEEP);
+			Assert::AreEqual(pkt.GetCmd(), PktDef::SLEEP);
+		}
+
+		TEST_METHOD(SetCmd_Response)
+		{
+			PktDef pkt;
+			pkt.SetCmd(PktDef::RESPONSE);
+			Assert::AreEqual(pkt.GetCmd(), PktDef::RESPONSE);
+			Assert::IsTrue(pkt.GetAck());
+		}
+
+		TEST_METHOD(SetAndGetBodyData)
+		{
+			PktDef pkt;
+			char testData[] = { 0x01, 0x02, 0x03 };
+			pkt.SetBodyData(testData, 3);
+			Assert::AreEqual(pkt.GetLength(), 3);
+			char* result = pkt.GetBodyData();
+			Assert::AreEqual(result[0], testData[0]);
+			Assert::AreEqual(result[1], testData[1]);
+			Assert::AreEqual(result[2], testData[2]);
+		}
+
+		TEST_METHOD(CalcCRC_MatchesCheckCRC)
+		{
+			PktDef pkt;
+			pkt.SetPktCount(123);
+			char body[] = { 0xAA, 0xBB };
+			pkt.SetBodyData(body, 2);
+
+			char* buffer = pkt.GenPacket();
+			int totalSize = PktDef::HEADERSIZE + pkt.GetLength() + 1;
+
+			bool crcOK = pkt.CheckCRC(buffer, totalSize);
+			Assert::IsTrue(crcOK);
+		}
+
+		TEST_METHOD(ConstructorFromRawData_CopiesCorrectly)
+		{
+			PktDef pkt;
+			pkt.SetPktCount(10);
+			pkt.SetCmd(PktDef::DRIVE);
+			char body[] = { 0x11, 0x22 };
+			pkt.SetBodyData(body, 2);
+			char* raw = pkt.GenPacket();
+
+			int totalSize = PktDef::HEADERSIZE + pkt.GetLength() + 1;
+
+			PktDef pktCopy(raw);
+
+			Assert::AreEqual(pktCopy.GetPktCount(), 10);
+			Assert::AreEqual(pktCopy.GetCmd(), PktDef::DRIVE);
+			Assert::AreEqual(pktCopy.GetLength(), 2);
+
+			char* copiedBody = pktCopy.GetBodyData();
+			Assert::AreEqual(copiedBody[0], body[0]);
+			Assert::AreEqual(copiedBody[1], body[1]);
+
+			Assert::IsTrue(pktCopy.CheckCRC(raw, totalSize));
+		}
+
+		TEST_METHOD(CheckCRC_InvalidData_Fails)
+		{
+			PktDef pkt;
+			pkt.SetPktCount(5);
+			char body[] = { 0x01, 0x02 };
+			pkt.SetBodyData(body, 2);
+			char* raw = pkt.GenPacket();
+			int totalSize = PktDef::HEADERSIZE + pkt.GetLength() + 1;
+
+			// Corrupt the buffer
+			raw[0] = 0xFF;
+
+			Assert::IsFalse(pkt.CheckCRC(raw, totalSize));
+		}
+
+		TEST_METHOD(GenPacket_MatchesExpectedLength)
+		{
+			PktDef pkt;
+			pkt.SetPktCount(1);
+			char body[] = { 0x05, 0x06, 0x07 };
+			pkt.SetBodyData(body, 3);
+			char* packet = pkt.GenPacket();
+
+			int expectedSize = PktDef::HEADERSIZE + 3 + 1;
+			Assert::IsNotNull(packet);
+			Assert::IsTrue(pkt.CheckCRC(packet, expectedSize));
+		}
+
+		TEST_METHOD(EmptyBody_CRCValid)
+		{
+			PktDef pkt;
+			pkt.SetPktCount(99);
+			char* packet = pkt.GenPacket();
+
+			int expectedSize = PktDef::HEADERSIZE + 1; // No body
+			Assert::IsNotNull(packet);
+			Assert::IsTrue(pkt.CheckCRC(packet, expectedSize));
+		}
+	};
+}
